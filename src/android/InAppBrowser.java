@@ -31,6 +31,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.support.v4.content.FileProvider;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -61,6 +62,7 @@ import org.apache.cordova.Config;
 import org.apache.cordova.CordovaArgs;
 import org.apache.cordova.CordovaHttpAuthHandler;
 import org.apache.cordova.CordovaPlugin;
+import org.apache.cordova.CordovaResourceApi;
 import org.apache.cordova.CordovaWebView;
 import org.apache.cordova.LOG;
 import org.apache.cordova.PluginManager;
@@ -83,6 +85,7 @@ public class InAppBrowser extends CordovaPlugin {
     protected static final String LOG_TAG = "InAppBrowser";
     private static final String SELF = "_self";
     private static final String SYSTEM = "_system";
+    private static final String LOCAL ="_local";
     private static final String EXIT_EVENT = "exit";
     private static final String LOCATION = "location";
     private static final String ZOOM = "zoom";
@@ -225,6 +228,15 @@ public class InAppBrowser extends CordovaPlugin {
                     else if (SYSTEM.equals(target)) {
                         LOG.d(LOG_TAG, "in system");
                         result = openExternal(url);
+                    }
+                    else if (LOCAL.equals(target)){
+                        LOG.d(LOG_TAG, "in local");
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                            LOG.d(LOG_TAG, "in system");
+                            result = openExternal(url);
+                        }else{
+                            result = openLocalFile(url, "application/pdf");
+                        }
                     }
                     // BLANK - or anything else
                     else {
@@ -413,6 +425,40 @@ public class InAppBrowser extends CordovaPlugin {
         }
     }
 
+    public String stripFileProtocol(String uriString){
+        if (uriString.startsWith("file://")){
+            uriString = uriString.substring(7);
+        } else if (uriString.startsWith("content://")){
+            uriString = uriString.substring(10);
+        }
+        return uriString;
+    }
+
+    public String openLocalFile (String url, String contentType){
+        String fileName = "";
+        try{
+            CordovaResourceApi resourceApi  = webView.getResourceApi();
+            Uri fileUri = resourceApi.remapUri(Uri.parse(url));
+            fileName = this.stripFileProtocol(fileUri.toString());
+        } catch (Exception e){
+            fileName = url;
+        }
+
+        File file = new File(fileName);
+
+        if (file.exists()){
+
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            Context context = cordova.getActivity().getApplicationContext();
+            Uri path = FileProvider.getUriForFile(context,cordova.getActivity().getPackageName()+".provider",file);
+            intent.setDataAndType(path,contentType);
+            intent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_ACTIVITY_NO_HISTORY);
+            cordova.getActivity().startActivity(intent);
+        }else{
+            LOG.d(LOG_TAG, file+" does not exists");
+        }
+        return "";
+    }
     /**
      * Display a new browser with the specified URL.
      *
